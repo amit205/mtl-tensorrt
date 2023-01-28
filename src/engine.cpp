@@ -195,13 +195,6 @@ bool Engine::loadNetwork() {
 
 bool Engine::runInference(const std::vector<cv::Mat> &inputFaceChips, std::vector<cv::Mat>& featureVectors_segmentation) {
     auto dims = m_engine->getBindingDimensions(0);
-
-    auto outputIndex_descriptor = m_engine->getBindingIndex("descriptor_head");
-    auto outputL_descriptor = m_engine->getBindingDimensions(outputIndex_descriptor);
-
-    auto outputIndex_detector = m_engine->getBindingIndex("detector_head");
-    auto outputL_detector = m_engine->getBindingDimensions(outputIndex_detector);
-
     auto outputIndex_segmentation = m_engine->getBindingIndex("segmentation_head");
     auto outputL_segmentation = m_engine->getBindingDimensions(outputIndex_segmentation);
     
@@ -218,15 +211,7 @@ bool Engine::runInference(const std::vector<cv::Mat> &inputFaceChips, std::vecto
         m_inputBuff.hostBuffer.resize(inputDims);
         m_inputBuff.deviceBuffer.resize(inputDims);
 
-        Dims4 outputDims_descriptor{batchSize, outputL_descriptor.d[1], outputL_descriptor.d[2], outputL_descriptor.d[3] };
-        Dims4 outputDims_detector{ batchSize, outputL_detector.d[1], outputL_detector.d[2], outputL_detector.d[3] };
         Dims4 outputDims_segmentation{ batchSize, outputL_segmentation.d[1], outputL_segmentation.d[2], outputL_segmentation.d[3] };
-
-        m_outputBuff_descriptor.hostBuffer.resize(outputDims_descriptor);
-        m_outputBuff_descriptor.deviceBuffer.resize(outputDims_descriptor);
-
-        m_outputBuff_detector.hostBuffer.resize(outputDims_detector);
-        m_outputBuff_detector.deviceBuffer.resize(outputDims_detector);
 
         m_outputBuff_segmentation.hostBuffer.resize(outputDims_segmentation);
         m_outputBuff_segmentation.deviceBuffer.resize(outputDims_segmentation);
@@ -239,7 +224,7 @@ bool Engine::runInference(const std::vector<cv::Mat> &inputFaceChips, std::vecto
     for (size_t batch = 0; batch < inputFaceChips.size(); ++batch) {
         auto image = inputFaceChips[batch];
         // Preprocess code
-        image.convertTo(image, CV_8UC1, 1.f / 255.f);
+        image.convertTo(image, CV_32FC1, 1.f / 255.f);
         //cv::subtract(image, cv::Scalar(0.5f, 0.5f, 0.5f), image, cv::noArray(), -1);
         //cv::divide(image, cv::Scalar(0.5f, 0.5f, 0.5f), image, 1, -1);
 
@@ -250,20 +235,8 @@ bool Engine::runInference(const std::vector<cv::Mat> &inputFaceChips, std::vecto
         int offset = dims.d[1] * dims.d[2] * dims.d[3] * batch;
         //int r = 0, g = 0, b = 0;
         for (int i = 0; i < dims.d[1] * dims.d[2] * dims.d[3]; ++i) {
-
-
-            //if (i % 3 == 0) {
             hostDataBuffer[offset + i] = *(reinterpret_cast<float*>(image.data) + i);  
-            //hostDataBuffer[offset + i] = *(reinterpret_cast<float*>(image.data) + (i*3)) + *(reinterpret_cast<float*>(image.data) + (i*3) + 1) + *(reinterpret_cast<float*>(image.data) + (i*3) + 2)) / 3;
-              
-            /*
-                hostDataBuffer[offset + r++] = *(reinterpret_cast<float*>(image.data) + i);
-            } else if (i % 3 == 1) {
-                hostDataBuffer[offset + g++ + dims.d[2]* dims.d[3]] = *(reinterpret_cast<float*>(image.data) + i);
-            } else {
-                hostDataBuffer[offset + b++ + dims.d[2]* dims.d[3]*2] = *(reinterpret_cast<float*>(image.data) + i);
-             */
-          //  }
+                  
         }
     }
 
@@ -273,25 +246,13 @@ bool Engine::runInference(const std::vector<cv::Mat> &inputFaceChips, std::vecto
         return false;
     }
 
-    std::vector<void*> predictionBindings = {m_inputBuff.deviceBuffer.data(), m_outputBuff_segmentation.deviceBuffer.data(), m_outputBuff_detector.deviceBuffer.data(), m_outputBuff_descriptor.deviceBuffer.data() };
+    std::vector<void*> predictionBindings = {m_inputBuff.deviceBuffer.data(), m_outputBuff_segmentation.deviceBuffer.data()};
     // Run inference.
     bool status = m_context->enqueueV2(predictionBindings.data(), m_cudaStream, nullptr);
     if (!status) {
         return false;
     }
     // Copy the results back to CPU memory
-    ret = cudaMemcpyAsync(m_outputBuff_descriptor.hostBuffer.data(), m_outputBuff_descriptor.deviceBuffer.data(), m_outputBuff_descriptor.deviceBuffer.nbBytes(), cudaMemcpyDeviceToHost, m_cudaStream);
-    if (ret != 0) {
-        std::cout << "Unable to copy descriptor buffer from GPU back to CPU" << std::endl;
-        return false;
-    }
-
-    ret = cudaMemcpyAsync(m_outputBuff_detector.hostBuffer.data(), m_outputBuff_detector.deviceBuffer.data(), m_outputBuff_detector.deviceBuffer.nbBytes(), cudaMemcpyDeviceToHost, m_cudaStream);
-    if (ret != 0) {
-        std::cout << "Unable to copy detector buffer from GPU back to CPU" << std::endl;
-        return false;
-    }
-
     ret = cudaMemcpyAsync(m_outputBuff_segmentation.hostBuffer.data(), m_outputBuff_segmentation.deviceBuffer.data(), m_outputBuff_segmentation.deviceBuffer.nbBytes(), cudaMemcpyDeviceToHost, m_cudaStream);
     if (ret != 0) {
         std::cout << "Unable to copy segmentation buffer from GPU back to CPU" << std::endl;
@@ -304,24 +265,11 @@ bool Engine::runInference(const std::vector<cv::Mat> &inputFaceChips, std::vecto
     }
     // Copy to output 
     for (int batch = 0; batch < batchSize; ++batch) {
-        //int dims_descriptor[] = { outputL_descriptor.d[1], outputL_descriptor.d[2], outputL_descriptor.d[3] };
-        //int dims_detector[] = { outputL_detector.d[1], outputL_detector.d[2], outputL_detector.d[3] };
         int dims_segmentation[] = { outputL_segmentation.d[1], outputL_segmentation.d[2], outputL_segmentation.d[3] };
-
-        //cv::Mat featureVector_descriptor(3, dims_descriptor, CV_64F);
-        //cv::Mat featureVector_detector(3, dims_detector, CV_64F);
-        cv::Mat featureVector_segmentation(3, dims_segmentation, CV_64F);
-        /*
-        memcpy(featureVector_descriptor.data, reinterpret_cast<float*>(m_outputBuff_descriptor.hostBuffer.data()) +
-        batch * outputL_descriptor.d[1] * outputL_descriptor.d[2] * outputL_descriptor.d[3] * sizeof(float), outputL_descriptor.d[1] * outputL_descriptor.d[2] * outputL_descriptor.d[3] * sizeof(float ));
-        featureVectors_descriptor.emplace_back(std::move(featureVector_descriptor));
-        memcpy(featureVector_detector.data, reinterpret_cast<float*>(m_outputBuff_detector.hostBuffer.data()) +
-            batch * outputL_detector.d[1] * outputL_detector.d[2] * outputL_detector.d[3] * sizeof(float), outputL_detector.d[1] * outputL_detector.d[2] * outputL_detector.d[3] * sizeof(float));
-        featureVectors_detector.emplace_back(std::move(featureVector_detector));*/
+        cv::Mat featureVector_segmentation(3, dims_segmentation, CV_32F);
         memcpy(featureVector_segmentation.data, reinterpret_cast<float*>(m_outputBuff_segmentation.hostBuffer.data()) +
             batch * outputL_segmentation.d[1] * outputL_segmentation.d[2] * outputL_segmentation.d[3] * sizeof(float), outputL_segmentation.d[1] * outputL_segmentation.d[2] * outputL_segmentation.d[3] * sizeof(float));
         featureVectors_segmentation.emplace_back(std::move(featureVector_segmentation));
-        //std::cout<<featureVector_segmentation<<std::endl;
     }
     return true;
 }

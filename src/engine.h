@@ -51,7 +51,6 @@ public:
     // Load and prepare the network for inference
     bool loadNetwork();
     // Run inference.
-    //bool runInference(const std::vector<cv::Mat>& inputFaceChips, std::vector<cv::Mat>& featureVectors_descriptor, std::vector<cv::Mat>& featureVectors_detector, std::vector<cv::Mat>& featureVectors_segmentation);
     bool runInference(const std::vector<cv::Mat>& inputFaceChips, std::vector<cv::Mat>& featureVectors_segmentation);
 private:
     // Converts the engine options into a string
@@ -66,8 +65,6 @@ private:
     const Options& m_options;
     Logger m_logger;
     samplesCommon::ManagedBuffer m_inputBuff;
-    samplesCommon::ManagedBuffer m_outputBuff_descriptor;
-    samplesCommon::ManagedBuffer m_outputBuff_detector;
     samplesCommon::ManagedBuffer m_outputBuff_segmentation;
     size_t m_prevBatchSize = 0;
     std::string m_engineName;
